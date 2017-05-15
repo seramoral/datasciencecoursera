@@ -1,0 +1,154 @@
+---
+title: "MachineLearning"
+author: "Serafín Moral García"
+date: "9 de mayo de 2017"
+output: html_document
+---
+
+```{r}
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(randomForest)
+```
+
+## Overview
+
+In this work we will consider the data sets given. We will separate our train set in two subsets, training and testing. After getting the data, cleaning it and selecting the relevant features, we will learn two models with traing set: Decision Trees and Random Forests. We will evaluate both of these models with our testing set and we will select the best one, which will be Random Forest
+
+Finally, we will evaluate our final model against the test set given, getting the final predictions. 
+
+## Getting and Cleaning Data Sets
+
+First of all, we download the files of training and testing
+
+```{r}
+
+training_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(training_url), na.strings=c("NA","#DIV/0!",""))
+test <- read.csv(url(test_url), na.strings=c("NA","#DIV/0!",""))
+```
+
+
+Now we partitioning our training set into two sets: train and test
+
+```{r}
+set.seed(43567)
+
+in_train <- createDataPartition(training$classe, p=0.6, list=FALSE)
+my_training <- training[in_train, ]
+my_test <- training[-in_train, ]
+
+```
+Now we check the dimensions of each one of these data sets created.
+
+```{r}
+dim(my_training)
+```
+
+```{r}
+dim(my_test)
+```
+
+The next thing that we do is to eliminate the variables whose variance is close to zero in our training set. 
+
+```{r}
+nzv <- nearZeroVar(my_training, saveMetrics=TRUE)
+index_not_nzv <- nzv$nzv==FALSE
+my_training <- my_training[,index_not_nzv]
+```
+
+We delete the first variable since it is clearly a no predictor
+
+```{r}
+my_training <- my_training[,-1]
+```
+
+Now we clean variables with more than $70\%$ of NA's
+
+```{r}
+my_training2 <- my_training
+num_variables <- length(my_training)
+num_instances <- nrow(my_training)
+
+for(i in 1:num_variables) {
+    num_NA <- sum(is.na(my_training[, i])) 
+    
+    if(num_NA/num_instances >= .7) {
+      num_variables2 <- length(my_training2)
+        for(j in 1:num_variables2) {
+            if(length(grep(names(my_training[i]), names(my_training2)[j]) ) == 1){
+                my_training2 <- my_training2[ , -j]
+            }   
+        } 
+    }
+}
+my_training <- my_training2
+
+```
+
+
+## Prediction with decision trees
+
+Firstly we fit a dicision tree model with our training data set. 
+
+```{r}
+decision_tree_model <- rpart(classe ~ ., data=my_training, method="class")
+```
+
+Now we plot this tree
+
+```{r}
+fancyRpartPlot(decision_tree_model)
+```
+
+Once built and plotted the model we predict the class of the test set using this model, and we print the confusion matrix and statistics of these predictions.
+
+```{r}
+predictions_decision_tree <- predict(decision_tree_model, my_test, type = "class")
+real_class <- my_test$classe
+confusionMatrix(real_class,predictions_decision_tree)
+```
+
+## Prediction with Random Forest
+
+Now we fit a random Forest model, we predict with this model and we get the confusion matrix and statistics in the same way we have done with Decision Trees. 
+
+```{r}
+rf_model <- randomForest(classe ~ ., data=my_training)
+predictions_rf <- predict(rf_model, my_test,type = "class")
+confusionMatrix(real_class,predictions_rf)
+```
+
+## Our final model and predictions in the test set
+
+We eventually select the random Forest model due to its higher accuracy with respect to Decision Trees. We now predict the class in the instances of test set.  Previously, we coerce train and test data into the same type.
+
+```{r}
+names_test <- colnames(my_training[,-58])
+test <- test[names_test]
+num_columns_test <- length(test)
+num_columns_train <- length(my_training)
+
+for (i in 1:num_columns_test){
+  name_training <- names(my_training)[i]
+    for(j in 1:num_columns_train){
+      name_test <- names(test)[j]
+        if(length(grep(name_training, name_test) == 1)) {
+            class(test[j]) <- class(my_training[i])
+        }      
+    }      
+}
+
+test <- rbind(my_training[2, -58] , test)
+test <- test[-1,]
+
+final_predictions <- predict(rf_model, test, type = "class")
+final_predictions
+```
+
+The expected out-of-sample error is the error obtained with this final test set. 
